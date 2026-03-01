@@ -1,0 +1,10 @@
+.idea/
+auto_trade/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+statistics/06_data/raw/
+statistics/06_data/processed/
+statistics/06_data/cache/
