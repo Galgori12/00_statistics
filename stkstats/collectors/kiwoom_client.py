@@ -1,6 +1,8 @@
-import os
+# stkstats/collectors/kiwoom_client.py
+from __future__ import annotations
+
 import time
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -11,10 +13,16 @@ KIWOOM_CHART_PATH = "/api/dostk/chart"
 
 
 class KiwoomClient:
-    def __init__(self, token=None, timeout=30, sleep_sec=1.0):
-        auth = KiwoomAuth()
-        self.base_url = auth.base_url  # ✅ 토큰 발급과 동일 도메인 사용
+    """
+    Kiwoom REST client (ka10080).
+    - 안정성: 429/5xx 재시도 + 지수 백오프
+    - 연속조회: cont-yn / next-key 자동 처리
+    - 하루치 제한: start_dt(YYYYMMDD)보다 과거 데이터가 나오면 즉시 중단
+    """
 
+    def __init__(self, timeout: int = 30, sleep_sec: float = 0.6, max_retries: int = 8):
+        auth = KiwoomAuth()
+        self.base_url = auth.base_url  # 토큰 발급과 동일 도메인 사용
         auth.login()
         if not auth.access_token:
             raise RuntimeError("토큰 발급 실패")
@@ -22,15 +30,17 @@ class KiwoomClient:
 
         self.timeout = timeout
         self.sleep_sec = sleep_sec
+        self.max_retries = max_retries
         self.session = requests.Session()
 
     def _post_chart(
-            self,
-            api_id: str,
-            body: Dict[str, Any],
-            cont_yn: Optional[str] = None,
-            next_key: Optional[str] = None,
+        self,
+        api_id: str,
+        body: Dict[str, Any],
+        cont_yn: Optional[str] = None,
+        next_key: Optional[str] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, str]]:
+        url = self.base_url.rstrip("/") + KIWOOM_CHART_PATH
         headers = {
             "Content-Type": "application/json;charset=UTF-8",
             "authorization": self.token,
@@ -41,76 +51,89 @@ class KiwoomClient:
         if next_key:
             headers["next-key"] = next_key
 
-        url = f"{self.base_url}{KIWOOM_CHART_PATH}"
-
-        # ✅ 429 대비 재시도 (지수 백오프)
-        max_retries = 8
-        backoff = 1.0  # seconds
-
-        for attempt in range(max_retries):
-            resp = self.session.post(url, headers=headers, json=body, timeout=self.timeout)
-
-            if resp.status_code == 200:
+        # retry with exponential backoff on 429/5xx
+        last_err: Optional[Exception] = None
+        for i in range(self.max_retries):
+            try:
+                resp = self.session.post(url, json=body, headers=headers, timeout=self.timeout)
+                if resp.status_code == 429 or resp.status_code >= 500:
+                    wait = self.sleep_sec * (2 ** i)
+                    print(f"[WARN] {resp.status_code} rate/server limit. wait {wait:.1f}s then retry... ({i+1}/{self.max_retries})")
+                    time.sleep(wait)
+                    continue
+                resp.raise_for_status()
                 data = resp.json()
-                out_headers = {
-                    "cont-yn": resp.headers.get("cont-yn", ""),
-                    "next-key": resp.headers.get("next-key", ""),
-                }
-                time.sleep(self.sleep_sec)  # 정상 호출 간 기본 텀
-                return data, out_headers
-
-            # 레이트리밋: 기다리고 재시도
-            if resp.status_code == 429:
-                wait = backoff * (2 ** attempt)
-                print(f"[WARN] 429 rate limit. wait {wait:.1f}s then retry... ({attempt + 1}/{max_retries})")
+                return data, dict(resp.headers)
+            except Exception as ex:
+                last_err = ex
+                wait = self.sleep_sec * (2 ** i)
+                print(f"[WARN] request failed. wait {wait:.1f}s then retry... ({i+1}/{self.max_retries}) err={ex}")
                 time.sleep(wait)
-                continue
 
-            # 그 외 오류는 바로 실패
-            raise RuntimeError(f"[{api_id}] HTTP {resp.status_code}: {resp.text[:500]}")
+        raise RuntimeError(f"chart request failed after retries. last_err={last_err}")
 
-        raise RuntimeError(f"[{api_id}] HTTP 429: too many requests after retries")
+    @staticmethod
+    def _extract_rows(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+        # response list key (docs) = stk_min_pole_chart_qry
+        rows = payload.get("stk_min_pole_chart_qry")
+        if rows is None:
+            return []
+        if isinstance(rows, list):
+            return rows
+        return []
 
-    def fetch_daily_all(self, stk_cd: str, base_dt: str, upd_stkpc_tp: str = "1") -> List[Dict[str, Any]]:
-        """ka10081: 종목 1개 일봉 전체(연속조회)"""
-        api_id = "ka10081"
-        body = {"stk_cd": stk_cd, "base_dt": base_dt, "upd_stkpc_tp": upd_stkpc_tp}
+    def fetch_minute_one_day(
+        self,
+        stk_cd: str,
+        base_dt: str,
+        tic_scope: str = "1",
+        upd_stkpc_tp: str = "1",
+        max_pages: int = 200,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch minute bars for a single day (base_dt YYYYMMDD).
+        Uses continuation until:
+          - cont-yn != 'Y'
+          - or rows go earlier than base_dt (safety stop)
+          - or max_pages reached
+        """
+        body = {
+            "stk_cd": stk_cd,
+            "tic_scope": str(tic_scope),
+            "upd_stkpc_tp": str(upd_stkpc_tp),
+            "base_dt": str(base_dt),
+        }
 
-        out: List[Dict[str, Any]] = []
-        cont_yn, next_key = None, None
+        all_rows: List[Dict[str, Any]] = []
+        cont_yn = None
+        next_key = None
 
-        while True:
-            data, h = self._post_chart(api_id, body, cont_yn=cont_yn, next_key=next_key)
-
-            rows = data.get("stk_dt_pole_chart_qry", [])
-            if not isinstance(rows, list):
-                rows = []
-            out.extend(rows)
-
-            if h.get("cont-yn") != "Y":
+        for page in range(max_pages):
+            payload, headers = self._post_chart("ka10080", body, cont_yn=cont_yn, next_key=next_key)
+            rows = self._extract_rows(payload)
+            if not rows:
                 break
-            cont_yn, next_key = "Y", h.get("next-key")
 
-        return out
+            all_rows.extend(rows)
 
-    def fetch_minute_all(self, stk_cd: str, base_dt: str, tic_scope: str = "1", upd_stkpc_tp: str = "1") -> List[Dict[str, Any]]:
-        """ka10080: 종목 1개 분봉 전체(연속조회)"""
-        api_id = "ka10080"
-        body = {"stk_cd": stk_cd, "tic_scope": tic_scope, "upd_stkpc_tp": upd_stkpc_tp, "base_dt": base_dt}
+            # safety stop: if we already see earlier dates than base_dt, stop.
+            # cntr_tm expected like YYYYMMDDHHMMSS or YYYYMMDDHHMM
+            # Kiwoom often returns newest->older
+            try:
+                min_tm = min(str(r.get("cntr_tm", "")).strip() for r in rows if r.get("cntr_tm") is not None)
+            except ValueError:
+                min_tm = ""
+            if min_tm and len(min_tm) >= 8:
+                day = min_tm[:8]
+                if day < base_dt:
+                    break
 
-        out: List[Dict[str, Any]] = []
-        cont_yn, next_key = None, None
+            cont_yn = headers.get("cont-yn")
+            next_key = headers.get("next-key")
 
-        while True:
-            data, h = self._post_chart(api_id, body, cont_yn=cont_yn, next_key=next_key)
-
-            rows = data.get("stk_min_pole_chart_qry", [])
-            if not isinstance(rows, list):
-                rows = []
-            out.extend(rows)
-
-            if h.get("cont-yn") != "Y":
+            if cont_yn != "Y" or not next_key:
                 break
-            cont_yn, next_key = "Y", h.get("next-key")
 
-        return out
+            time.sleep(self.sleep_sec)
+
+        return all_rows
