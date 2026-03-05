@@ -1,0 +1,28 @@
+﻿[DBG] BASE_DIR=C:\Users\PC\PycharmProjects\suhoTrade
+[DBG] EVENTS_PATH exists=True C:\Users\PC\PycharmProjects\suhoTrade\stkstats\data\raw\archive\upper_limit_events_cleaned_2025_minute_ok.parquet
+[DBG] DAILY_DIR exists=True C:\Users\PC\PycharmProjects\suhoTrade\stkstats\data\raw\daily_ohlc
+[DBG] MINUTE_DIR exists=True C:\Users\PC\PycharmProjects\suhoTrade\stkstats\data\raw\minute_ohlc_t1
+[DBG] events raw rows=560 cols=['stk_cd', 'limit_dt', 'limit_trde_prica', 't1_dt', 't1_open', 't1_high', 't1_low', 't1_close', 'year']
+[DBG] t1_close_num NaN ratio=0.0000
+[DBG] limit_close NaN ratio=1.0000
+[DBG] events kept after dropna(t1_open)=560/560
+[DBG] minute exists count=448/560
+[DBG] progress 50/384
+[DBG] progress 100/384
+[DBG] progress 150/384
+[DBG] progress 200/384
+[DBG] progress 250/384
+[DBG] progress 300/384
+[DBG] progress 350/384
+[DBG] progress 384/384
+[DBG] entered_trades describe:
+count    384.000000
+mean      97.187500
+std      168.573887
+min        0.000000
+25%        0.000000
+50%        0.000000
+75%       95.500000
+max      396.000000
+[DBG] max_entered=396
+[DBG] max_EV=0.014343945826985994

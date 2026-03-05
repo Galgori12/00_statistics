@@ -1,0 +1,40 @@
+﻿[DBG] BASE_DIR=C:\Users\PC\PycharmProjects\suhoTrade
+[DBG] EVENTS_PATH exists=True C:\Users\PC\PycharmProjects\suhoTrade\stkstats\data\raw\archive\upper_limit_events_cleaned_2025_minute_ok.parquet
+[DBG] DAILY_DIR exists=True C:\Users\PC\PycharmProjects\suhoTrade\stkstats\data\raw\daily_ohlc
+[DBG] MINUTE_DIR exists=True C:\Users\PC\PycharmProjects\suhoTrade\stkstats\data\raw\minute_ohlc_t1
+[DBG] daily parquet sample count=20
+[DBG] daily sample: 000660.parquet
+[DBG] daily sample: 005930.parquet
+[DBG] daily sample: 035720.parquet
+[DBG] daily sample: by_year\2023\000155.parquet
+[DBG] daily sample: by_year\2023\000157.parquet
+[DBG] daily sample: by_year\2023\000225.parquet
+[DBG] daily sample: by_year\2023\000227.parquet
+[DBG] daily sample: by_year\2023\000230.parquet
+[DBG] daily sample: by_year\2023\000240.parquet
+[DBG] daily sample: by_year\2023\000250.parquet
+[DBG] daily sample: by_year\2023\000300.parquet
+[DBG] daily sample: by_year\2023\000325.parquet
+[DBG] daily sample: by_year\2023\000400.parquet
+[DBG] daily sample: by_year\2023\000430.parquet
+[DBG] daily sample: by_year\2023\000440.parquet
+[DBG] daily sample: by_year\2023\000480.parquet
+[DBG] daily sample: by_year\2023\000490.parquet
+[DBG] daily sample: by_year\2023\000545.parquet
+[DBG] daily sample: by_year\2023\000680.parquet
+[DBG] daily sample: by_year\2023\000725.parquet
+[DBG] events raw rows=560 cols=['stk_cd', 'limit_dt', 'limit_trde_prica', 't1_dt', 't1_open', 't1_high', 't1_low', 't1_close', 'year']
+[DBG] t1_close_num NaN ratio=0.0000
+[DBG] limit_close NaN ratio=0.0000
+[DBG] minute exists count=448/560
+[DBG] entered_trades describe:
+count    768.000000
+mean      48.593750
+std       23.821841
+min       10.000000
+25%       32.750000
+50%       53.500000
+75%       70.000000
+max       77.000000
+[DBG] max_entered=77
+[DBG] max_EV=0.06375
